@@ -12,15 +12,14 @@ import pandas as pd
 import pystray
 from pystray import MenuItem as item
 from PIL import Image as PILImage
-import io
 import sys
 import ctypes
 
-# 本地数据路径
+# 文件路径
 DATA_FILE = "followers.json"
 SKIN_FOLDER = "skins"
 
-# 工具函数：资源路径适配（用于打包后路径适配）
+# 工具函数：资源路径适配
 def resource_path(relative):
     try:
         base_path = sys._MEIPASS
@@ -28,127 +27,119 @@ def resource_path(relative):
         base_path = os.path.abspath(".")
     return os.path.join(base_path, relative)
 
-# 主类
+# 主程序类
 class FansMonitorApp:
     def __init__(self):
         self.root = tk.Tk()
         self.root.overrideredirect(True)  # 无边框
-        self.root.geometry("800x600")
-        self.root.configure(bg='white')
+        self.root.geometry("300x400+100+100")
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-transparentcolor", "pink")
+        self.root.configure(bg="pink")
 
-        self.users = [{"uid": "1051623622", "name": "默认用户", "face": ""}]
+        # 数据结构
+        # 数据结构
+        self.users = [{"uid": "1051623622", "name": "之箬曦", "face": "https://i1.hdslb.com/bfs/face/40b59ec60328d982b84423bc2b796240ba38cb62.jpg@120w_120h_1c"}]
         self.follow_data = {}
         self.load_data()
 
-        self.bg_image = None
-        self.set_background(os.path.join(SKIN_FOLDER, "default.jpg"))
 
+        # 背景皮肤
+        self.bg_image = None
+        self.bg_label = None
+        self.set_background(os.path.join(SKIN_FOLDER, "default.png"))
+
+        # 创建UI
         self.create_ui()
         self.setup_window_drag()
         self.root.after(5000, self.update_loop)
+
+        # 托盘图标
         self.create_tray_icon()
+
         self.root.mainloop()
 
     def set_background(self, path):
         try:
-            image = Image.open(path).resize((800, 600))
-            self.bg_image = ImageTk.PhotoImage(image)
-            label = tk.Label(self.root, image=self.bg_image)
-            label.place(x=0, y=0, relwidth=1, relheight=1)
-        except:
-            pass
+            img = Image.open(path).resize((300, 400))
+            self.bg_image = ImageTk.PhotoImage(img)
+            if self.bg_label:
+                self.bg_label.config(image=self.bg_image)
+            else:
+                self.bg_label = tk.Label(self.root, image=self.bg_image, bg="pink")
+                self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+        except Exception as e:
+            print(f"背景加载失败: {e}")
 
     def create_ui(self):
         self.info_labels = {}
         self.avatar_labels = {}
-
-        ttk.Button(self.root, text="添加用户", command=self.add_user).place(x=50, y=10)
-        ttk.Button(self.root, text="图表分析", command=self.show_chart).place(x=150, y=10)
-        ttk.Button(self.root, text="导出数据", command=self.export_data).place(x=250, y=10)
-        ttk.Button(self.root, text="更新日志", command=self.show_update_log).place(x=350, y=10)
-
-        self.refresh_user_ui()
-
-    def refresh_user_ui(self):
-        for label in self.info_labels.values():
-            label.destroy()
-        for img in self.avatar_labels.values():
-            img.destroy()
-        self.info_labels.clear()
-        self.avatar_labels.clear()
-
-        y = 80
+        y = 60
         for user in self.users:
             uid = user["uid"]
             img = self.get_avatar(user)
-            img_label = tk.Label(self.root, image=img, bg="white")
+            img_label = tk.Label(self.root, image=img, bd=0, bg="pink")
             img_label.image = img
-            img_label.place(x=30, y=y)
+            img_label.place(x=20, y=y)
 
-            lbl = ttk.Label(self.root, text=f"{user['name']}：加载中...", background="white")
-            lbl.place(x=90, y=y + 10)
+            lbl = tk.Label(self.root, text=f"{user['name']}: 加载中...", fg="black", bg="pink")
+            lbl.place(x=80, y=y + 10)
 
             self.info_labels[uid] = lbl
             self.avatar_labels[uid] = img_label
-            y += 80
+            y += 70
+
+        tk.Button(self.root, text="添加用户", command=self.add_user).place(x=20, y=10)
+        tk.Button(self.root, text="图表", command=self.show_chart).place(x=110, y=10)
+        tk.Button(self.root, text="导出", command=self.export_data).place(x=180, y=10)
 
     def get_avatar(self, user):
         try:
             if not user.get("face"):
                 url = f"https://api.bilibili.com/x/space/wbi/acc/info?mid={user['uid']}"
                 res = requests.get(url).json()
-                if res.get("code") != 0:
-                    raise Exception("UID 错误")
                 user["name"] = res["data"]["name"]
                 user["face"] = res["data"]["face"]
-
-            response = requests.get(user["face"], timeout=5)
-            img_data = io.BytesIO(response.content)
-            img = Image.open(img_data).resize((48, 48))
+            response = requests.get(user["face"], stream=True)
+            img = Image.open(response.raw).resize((48, 48))
             return ImageTk.PhotoImage(img)
         except Exception as e:
-            print(f"获取头像失败：{e}")
+            print(f"头像获取失败：{e}")
             return ImageTk.PhotoImage(Image.new("RGB", (48, 48), color="gray"))
 
     def add_user(self):
         def do_add():
-            uid = entry.get()
-            if not uid.isdigit():
-                messagebox.showerror("错误", "UID 应为纯数字")
-                return
-            try:
-                url = f"https://api.bilibili.com/x/space/wbi/acc/info?mid={uid}"
-                res = requests.get(url).json()
-                if res.get("code") != 0:
-                    raise Exception("无效UID")
-                name = res["data"]["name"]
-                face = res["data"]["face"]
-                new_user = {"uid": uid, "name": name, "face": face}
+            uid = entry.get().strip()
+            if uid and uid.isdigit():
+                new_user = {"uid": uid, "name": f"用户{uid}", "face": ""}
                 self.users.append(new_user)
                 self.follow_data[uid] = []
                 self.save_data()
-                self.refresh_user_ui()
-                top.destroy()
-            except Exception as e:
-                messagebox.showerror("错误", f"添加失败：{e}")
+                self.root.destroy()
+                os.execl(sys.executable, sys.executable, *sys.argv)
+            else:
+                messagebox.showerror("错误", "请输入正确的 UID")
 
         top = tk.Toplevel(self.root)
+        top.geometry("200x100")
         top.title("添加用户")
-        tk.Label(top, text="输入UID:").pack(pady=5)
+        tk.Label(top, text="输入UID:").pack()
         entry = tk.Entry(top)
-        entry.pack(pady=5)
-        ttk.Button(top, text="添加", command=do_add).pack(pady=5)
+        entry.pack()
+        ttk.Button(top, text="添加", command=do_add).pack()
 
     def fetch_fans(self, uid):
         try:
             url = f"https://api.bilibili.com/x/relation/stat?vmid={uid}"
-            headers = {"User-Agent": "Mozilla/5.0"}
+            headers = {
+                "User-Agent": "Mozilla/5.0"
+            }
             res = requests.get(url, timeout=5, headers=headers)
             if res.status_code == 200:
                 data = res.json()
                 return data['data']['follower']
         except Exception as e:
-            print(f"获取粉丝数失败：{e}")
+            print(f"粉丝获取失败：{e}")
         return -1
 
     def update_loop(self):
@@ -172,20 +163,20 @@ class FansMonitorApp:
                 plt.plot(times, counts, label=uid)
         plt.xticks(rotation=45)
         plt.legend()
-        plt.title("粉丝数变化趋势")
+        plt.title("粉丝变化趋势")
         plt.tight_layout()
         plt.show()
 
     def export_data(self):
-        export_path = filedialog.asksaveasfilename(defaultextension=".xlsx")
-        if export_path:
+        path = filedialog.asksaveasfilename(defaultextension=".xlsx")
+        if path:
             all_data = []
             for uid, records in self.follow_data.items():
                 for time_str, count in records:
                     all_data.append({"UID": uid, "时间": time_str, "粉丝数": count})
             df = pd.DataFrame(all_data)
-            df.to_excel(export_path, index=False)
-            messagebox.showinfo("导出成功", f"数据已保存到 {export_path}")
+            df.to_excel(path, index=False)
+            messagebox.showinfo("导出成功", f"数据保存到 {path}")
 
     def save_data(self):
         with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -198,13 +189,18 @@ class FansMonitorApp:
                     content = f.read().strip()
                     if content:
                         self.follow_data = json.loads(content)
+                    else:
+                        self.follow_data = {}
             except Exception as e:
-                print(f"加载数据出错：{e}")
+                print(f"加载数据失败：{e}")
+                self.follow_data = {}
+        else:
+            self.follow_data = {}
 
     def create_tray_icon(self):
-        image = PILImage.new("RGB", (64, 64), color=(255, 0, 0))
-        self.icon = pystray.Icon("bili", image, "B站观测站", menu=pystray.Menu(
-            item("显示主界面", self.show_window),
+        image = PILImage.new("RGB", (64, 64), color=(255, 192, 203))
+        self.icon = pystray.Icon("bili_fans", image, "B站涨粉桌宠", menu=pystray.Menu(
+            item("显示窗口", self.show_window),
             item("退出程序", self.exit_app)
         ))
         threading.Thread(target=self.icon.run, daemon=True).start()
@@ -222,24 +218,13 @@ class FansMonitorApp:
             self.root.y = event.y
 
         def do_move(event):
-            deltax = event.x - self.root.x
-            deltay = event.y - self.root.y
-            x = self.root.winfo_x() + deltax
-            y = self.root.winfo_y() + deltay
+            x = self.root.winfo_x() + (event.x - self.root.x)
+            y = self.root.winfo_y() + (event.y - self.root.y)
             self.root.geometry(f"+{x}+{y}")
 
         self.root.bind("<Button-1>", start_move)
         self.root.bind("<B1-Motion>", do_move)
 
-    def show_update_log(self):
-        log = """更新日志：
-- 修复添加用户失败、头像无法显示问题
-- UI界面优化：头像、昵称对齐；无需重启加载
-- 提升粉丝数获取稳定性与错误提示
-- 增加更新日志窗口
-"""
-        messagebox.showinfo("更新日志", log)
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     ctypes.windll.shcore.SetProcessDpiAwareness(1)
     FansMonitorApp()
