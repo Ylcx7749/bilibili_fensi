@@ -25,6 +25,9 @@
 git clone https://github.com/Ylcx7749/bilibili_fensi.git
 cd bilibili_fensi
 
+尚未打包.exe
+cmd输入python main.py运行
+
 ### 项目结构
 bilibili_fensi/
 ├── skins/                  # 背景和皮肤文件夹
